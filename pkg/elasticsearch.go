@@ -3,6 +3,7 @@ package pkg
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"strings"
 	"time"
@@ -53,8 +54,9 @@ type clusterSettings struct {
 
 //==============================================================================
 
-func (c *esClient) clusterHealth() (health *clusterHealth, err error) {
-	if err = c.get("_cluster/health", health); err != nil {
+func (c *esClient) clusterHealth() (*clusterHealth, error) {
+	health := new(clusterHealth)
+	if err := c.get("_cluster/health", health); err != nil {
 		return nil, err
 	}
 	return health, nil
@@ -86,8 +88,14 @@ func (c *esClient) waitForShardRecovery() error {
 
 	return waitFor(30*time.Minute, 5*time.Second, func(d time.Duration) (bool, error) {
 		health, err := c.clusterHealth()
+
+		fmt.Println("timesVerified, timesVerifiedRed, timesVerifiedUncertain", timesVerified, timesVerifiedRed, timesVerifiedUncertain)
+
 		switch {
 		case err != nil:
+
+			fmt.Println("err", err)
+
 			if d > errorGracePeriod {
 				return false, errors.New("Timed out waiting on shard recovery")
 			}

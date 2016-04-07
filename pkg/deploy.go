@@ -7,7 +7,6 @@ import (
 )
 
 func Deploy(appName *string, componentName *string) error {
-
 	sg := supergiant.New("http://localhost:8080/v0", "", "", true) // TODO ------------- what URL are we using here?
 
 	app, err := sg.Apps().Get(appName)
@@ -20,9 +19,12 @@ func Deploy(appName *string, componentName *string) error {
 		return err
 	}
 
-	currentRelease, err := component.CurrentRelease()
-	if err != nil {
-		return err
+	var currentRelease *supergiant.ReleaseResource
+	if component.CurrentReleaseTimestamp != nil {
+		currentRelease, err = component.CurrentRelease()
+		if err != nil {
+			return err
+		}
 	}
 
 	targetRelease, err := component.TargetRelease()
@@ -138,7 +140,6 @@ func Deploy(appName *string, componentName *string) error {
 		if err := es.waitForShardRecovery(); err != nil {
 			return err
 		}
-
 	}
 
 	if err := es.enableShardRebalancing(); err != nil {

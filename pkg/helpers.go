@@ -11,6 +11,9 @@ import (
 
 func httpRequest(baseURL string, verb string, path string, body []byte) (*http.Response, error) {
 	url := fmt.Sprintf("%s/%s", baseURL, path)
+
+	fmt.Println(fmt.Sprintf("%s %s %s", verb, url, string(body)))
+
 	req, err := http.NewRequest(verb, url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
