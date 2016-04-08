@@ -7,7 +7,7 @@ import (
 )
 
 func Deploy(appName *string, componentName *string) error {
-	sg := supergiant.New("http://localhost:8080/v0", "", "", true) // TODO ------------- what URL are we using here?
+	sg := supergiant.New("http://api.supergiant.svc.cluster.local:8080/v0", "", "", true)
 
 	app, err := sg.Apps().Get(appName)
 	if err != nil {
