@@ -20,7 +20,11 @@ func Deploy(appName *string, componentName *string) error {
 		return err
 	}
 
+	fmt.Println("aaaaaaaaaaaaaa")
+
 	fmt.Println("Loading component")
+
+	fmt.Println("bbbbbbbbbbbbbb")
 
 	component, err := app.Components().Get(componentName)
 	if err != nil {
