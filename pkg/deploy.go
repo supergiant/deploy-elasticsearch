@@ -9,7 +9,8 @@ import (
 
 func Deploy(appName *string, componentName *string) error {
 
-	fmt.Println("Starting Supergiant Client on http://api-public.supergiant.svc.cluster.local:8080/v0")
+	// TODO
+	supergiant.Log.SetLevel("debug")
 
 	sg := supergiant.New("http://api-public.supergiant.svc.cluster.local:8080/v0", "", "", true)
 
