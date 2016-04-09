@@ -27,6 +27,8 @@ func Deploy(appName *string, componentName *string) error {
 		return err
 	}
 
+	fmt.Println("Loading current release")
+
 	var currentRelease *supergiant.ReleaseResource
 	if component.CurrentReleaseTimestamp != nil {
 		currentRelease, err = component.CurrentRelease()
@@ -35,10 +37,14 @@ func Deploy(appName *string, componentName *string) error {
 		}
 	}
 
+	fmt.Println("Loading target release")
+
 	targetRelease, err := component.TargetRelease()
 	if err != nil {
 		return err
 	}
+
+	fmt.Println("Loading target instances")
 
 	targetList, err := targetRelease.Instances().List()
 	if err != nil {
@@ -47,6 +53,9 @@ func Deploy(appName *string, componentName *string) error {
 	targetInstances := targetList.Items
 
 	if currentRelease == nil { // first release
+
+		fmt.Println("Starting target instances")
+
 		for _, instance := range targetInstances {
 			if err = instance.Start(); err != nil {
 				return err
