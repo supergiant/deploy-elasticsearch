@@ -13,18 +13,14 @@ func Deploy(appName *string, componentName *string) error {
 
 	sg := supergiant.New("http://api-public.supergiant.svc.cluster.local:8080/v0", "", "", true)
 
-	fmt.Println("Loading app")
+	fmt.Println("Loading app", *appName)
 
 	app, err := sg.Apps().Get(appName)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("aaaaaaaaaaaaaa")
-
-	fmt.Println("Loading component")
-
-	fmt.Println("bbbbbbbbbbbbbb")
+	fmt.Println("Loading component", *componentName)
 
 	component, err := app.Components().Get(componentName)
 	if err != nil {
