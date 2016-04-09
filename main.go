@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"runtime/debug"
+	"runtime"
 
 	"github.com/supergiant/deploy-elasticsearch/pkg"
 )
@@ -19,8 +19,9 @@ func main() {
 	flag.Parse()
 
 	if err := pkg.Deploy(&appName, &compName); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		debug.PrintStack()
+		_, fn, line, _ := runtime.Caller(1)
+		fmt.Fprintf(os.Stderr, "[error] %s:%d %v\n", fn, line, err)
+
 		os.Exit(1)
 	}
 }
