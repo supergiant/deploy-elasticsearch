@@ -9,9 +9,9 @@ import (
 
 func Deploy(appName *string, componentName *string) error {
 
-	fmt.Println("Starting Supergiant Client on http://api.supergiant.svc.cluster.local:8080/v0")
+	fmt.Println("Starting Supergiant Client on http://api-public.supergiant.svc.cluster.local:8080/v0")
 
-	sg := supergiant.New("http://api.supergiant.svc.cluster.local:8080/v0", "", "", true)
+	sg := supergiant.New("http://api-public.supergiant.svc.cluster.local:8080/v0", "", "", true)
 
 	fmt.Println("Loading app")
 
