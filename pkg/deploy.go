@@ -1,18 +1,26 @@
 package pkg
 
 import (
+	"fmt"
 	"time"
 
 	supergiant "github.com/supergiant/supergiant/client"
 )
 
 func Deploy(appName *string, componentName *string) error {
+
+	fmt.Println("Starting Supergiant Client on http://api.supergiant.svc.cluster.local:8080/v0")
+
 	sg := supergiant.New("http://api.supergiant.svc.cluster.local:8080/v0", "", "", true)
+
+	fmt.Println("Loading app")
 
 	app, err := sg.Apps().Get(appName)
 	if err != nil {
 		return err
 	}
+
+	fmt.Println("Loading component")
 
 	component, err := app.Components().Get(componentName)
 	if err != nil {
