@@ -1,7 +1,6 @@
 package pkg
 
 import (
-	"fmt"
 	"time"
 
 	supergiant "github.com/supergiant/supergiant/client"
@@ -14,21 +13,15 @@ func Deploy(appName *string, componentName *string) error {
 
 	sg := supergiant.New("http://api-public.supergiant.svc.cluster.local:8080/v0", "", "", true)
 
-	fmt.Println("Loading app", *appName)
-
 	app, err := sg.Apps().Get(appName)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("Loading component", *componentName)
-
 	component, err := app.Components().Get(componentName)
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("Loading current release")
 
 	var currentRelease *supergiant.ReleaseResource
 	if component.CurrentReleaseTimestamp != nil {
@@ -38,14 +31,10 @@ func Deploy(appName *string, componentName *string) error {
 		}
 	}
 
-	fmt.Println("Loading target release")
-
 	targetRelease, err := component.TargetRelease()
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("Loading target instances")
 
 	targetList, err := targetRelease.Instances().List()
 	if err != nil {
@@ -54,9 +43,6 @@ func Deploy(appName *string, componentName *string) error {
 	targetInstances := targetList.Items
 
 	if currentRelease == nil { // first release
-
-		fmt.Println("Starting target instances")
-
 		for _, instance := range targetInstances {
 			if err = instance.Start(); err != nil {
 				return err
@@ -107,21 +93,32 @@ func Deploy(appName *string, componentName *string) error {
 		}
 
 		for _, instance := range currentInstances[len(currentInstances)-instancesRemoving:] {
-
 			if err := instance.Stop(); err != nil {
 				return err
 			}
-
 			if err := es.waitForShardRecovery(); err != nil {
 				return err
 			}
-
 		}
 
 		if err := es.clearAwarenessAttrs(); err != nil {
 			return err
 		}
 
+		// add new instances
+	} else if currentRelease.InstanceCount < targetRelease.InstanceCount {
+		instancesAdding := targetRelease.InstanceCount - currentRelease.InstanceCount
+		newInstances := targetInstances[len(targetInstances)-instancesAdding:]
+		for _, instance := range newInstances {
+			if err := instance.Start(); err != nil {
+				return err
+			}
+		}
+		for _, instance := range newInstances {
+			if err := instance.WaitForStarted(); err != nil {
+				return err
+			}
+		}
 	}
 
 	if err := es.disableShardRebalancing(); err != nil {
@@ -162,22 +159,6 @@ func Deploy(appName *string, componentName *string) error {
 
 	if err := es.enableShardRebalancing(); err != nil {
 		return err
-	}
-
-	// add new instances
-	if currentRelease.InstanceCount < targetRelease.InstanceCount {
-		instancesAdding := targetRelease.InstanceCount - currentRelease.InstanceCount
-		newInstances := targetInstances[len(targetInstances)-instancesAdding:]
-		for _, instance := range newInstances {
-			if err := instance.Start(); err != nil {
-				return err
-			}
-		}
-		for _, instance := range newInstances {
-			if err := instance.WaitForStarted(); err != nil {
-				return err
-			}
-		}
 	}
 
 	return nil
