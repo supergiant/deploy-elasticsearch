@@ -62,9 +62,9 @@ func (c *esClient) clusterHealth() (*clusterHealth, error) {
 	return health, nil
 }
 
-func (c *esClient) updateSettings(settings interface{}) error {
-	return c.put("_settings", settings)
-}
+// func (c *esClient) updateSettings(settings interface{}) error {
+// 	return c.put("_settings", settings)
+// }
 
 func (c *esClient) updateClusterSettings(settings *clusterSettings) error {
 	return c.put("_cluster/settings", settings)
@@ -120,8 +120,11 @@ func (c *esClient) waitForShardRecovery() error {
 }
 
 func (c *esClient) setMinMasterNodes(min int) error {
-	settings := map[string]int{"discovery.zen.minimum_master_nodes": min}
-	return c.updateSettings(settings)
+	return c.updateClusterSettings(&clusterSettings{
+		Persistent: map[string]interface{}{
+			"discovery.zen.minimum_master_nodes": min,
+		},
+	})
 }
 
 func (c *esClient) setAwarenessAttrs(attrs []string) error {

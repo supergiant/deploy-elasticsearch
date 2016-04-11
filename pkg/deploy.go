@@ -1,7 +1,6 @@
 package pkg
 
 import (
-	"fmt"
 	"time"
 
 	supergiant "github.com/supergiant/supergiant/client"
@@ -72,8 +71,6 @@ func Deploy(appName *string, componentName *string) error {
 	// remove instances
 	if currentRelease.InstanceCount > targetRelease.InstanceCount {
 
-		// reduceReplicas()
-
 		if err := es.setMinMasterNodes(targetRelease.InstanceCount/2 + 1); err != nil {
 			return err
 		}
@@ -93,12 +90,7 @@ func Deploy(appName *string, componentName *string) error {
 			return err
 		}
 
-		fmt.Println("AWARENESS ATTRS", awarenessAttrs)
-
 		for _, instance := range currentInstances[len(currentInstances)-instancesRemoving:] {
-
-			fmt.Println("STOPPING INSTANCE", *instance.ID)
-
 			if err := instance.Stop(); err != nil {
 				return err
 			}
