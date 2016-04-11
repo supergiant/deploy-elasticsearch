@@ -124,6 +124,11 @@ func Deploy(appName *string, componentName *string) error {
 	}
 
 	// update instances
+
+	if *currentRelease.InstanceGroup == *targetRelease.InstanceGroup {
+		return nil // no need to update restart instances
+	}
+
 	var instancesRestarting int
 	if currentRelease.InstanceCount < targetRelease.InstanceCount {
 		instancesRestarting = currentRelease.InstanceCount
