@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"fmt"
 	"time"
 
 	supergiant "github.com/supergiant/supergiant/client"
@@ -92,7 +93,12 @@ func Deploy(appName *string, componentName *string) error {
 			return err
 		}
 
+		fmt.Println("AWARENESS ATTRS", awarenessAttrs)
+
 		for _, instance := range currentInstances[len(currentInstances)-instancesRemoving:] {
+
+			fmt.Println("STOPPING INSTANCE", *instance.ID)
+
 			if err := instance.Stop(); err != nil {
 				return err
 			}
