@@ -124,8 +124,25 @@ func Deploy(appName *string, componentName *string) error {
 	}
 
 	// update instances
-	// NOTE instance count should be the same at this point between releases
-	for i := 0; i < currentRelease.InstanceCount; i++ {
+	var instancesRestarting int
+	if currentRelease.InstanceCount < targetRelease.InstanceCount {
+		instancesRestarting = currentRelease.InstanceCount
+	} else {
+		instancesRestarting = targetRelease.InstanceCount
+	}
+
+	for i := 0; i < instancesRestarting; i++ {
+		currentInstance := currentInstances[i]
+		targetInstance := targetInstances[i]
+
+		currentInstance.Stop()
+		currentInstance.WaitForStopped()
+
+		targetInstance.Start()
+		targetInstance.WaitForStarted()
+	}
+
+	for i := 0; i < instancesRestarting; i++ {
 		currentInstance := currentInstances[i]
 		targetInstance := targetInstances[i]
 
