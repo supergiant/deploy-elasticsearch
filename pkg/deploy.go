@@ -1,184 +1,141 @@
 package pkg
 
 import (
+	"fmt"
 	"time"
 
-	supergiant "github.com/supergiant/supergiant/client"
+	supergiant "github.com/supergiant/supergiant/pkg/client"
+	"github.com/supergiant/supergiant/pkg/model"
 )
 
-func Deploy(appName *string, componentName *string) error {
-
-	// TODO
-	// supergiant.Log.SetLevel("debug")
-
-	sg := supergiant.New("http://supergiant-api.supergiant.svc.cluster.local/v0", "", "", true)
-
-	app, err := sg.Apps().Get(appName)
-	if err != nil {
+// Deploy will either setup a new Component, or apply changes to an existing.
+func Deploy(sg *supergiant.Client, componentID *int64) error {
+	includes := []string{
+		"App.Kube.CloudAccount",
+		"PrivateImageKeys",
+		"CurrentRelease",
+		"TargetRelease",
+		"Instances.Volumes",
+	}
+	component := new(model.Component)
+	if err := sg.Components.GetWithIncludes(componentID, component, includes); err != nil {
 		return err
 	}
 
-	component, err := app.Components().Get(componentName)
-	if err != nil {
-		return err
-	}
-
-	var currentRelease *supergiant.ReleaseResource
-	if component.CurrentReleaseTimestamp != nil {
-		currentRelease, err = component.CurrentRelease()
-		if err != nil {
-			return err
-		}
-	}
-
-	targetRelease, err := component.TargetRelease()
-	if err != nil {
-		return err
-	}
-
-	targetList, err := targetRelease.Instances().List()
-	if err != nil {
-		return err
-	}
-	targetInstances := targetList.Items
-
-	if currentRelease == nil { // first release
-		for _, instance := range targetInstances {
-			if err = instance.Start(); err != nil {
+	// If first deploy, concurrently start Instances and return
+	if component.CurrentRelease == nil {
+		for _, instance := range component.Instances {
+			if instance.Started {
+				continue
+			}
+			if err := sg.Instances.Start(instance); err != nil {
 				return err
 			}
 		}
-		for _, instance := range targetInstances {
-			if err = instance.WaitForStarted(); err != nil {
+		for _, instance := range component.Instances {
+			if err := sg.Instances.WaitForStarted(instance); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
 
-	currentList, err := currentRelease.Instances().List()
-	if err != nil {
+	elasticsearch := newEsClient(component.Addresses.External[0].Address)
+
+	// Wait for initial shard recovery before doing any restarts
+	if err := elasticsearch.waitForShardRecovery(); err != nil {
 		return err
 	}
-	currentInstances := currentList.Items
-
-	es := newEsClient(component.Addresses.External[0].Address)
-
-	if err := es.waitForShardRecovery(); err != nil {
+	// Update minimum master nodes in case out of sync
+	if err := elasticsearch.setMinMasterNodes(component.TargetRelease.InstanceCount/2 + 1); err != nil {
 		return err
 	}
 
-	// remove instances
-	if currentRelease.InstanceCount > targetRelease.InstanceCount {
+	// If we're removing instances
+	if component.CurrentRelease.InstanceCount > component.TargetRelease.InstanceCount {
+		instancesRemoving := component.CurrentRelease.InstanceCount - component.TargetRelease.InstanceCount
 
-		if err := es.setMinMasterNodes(targetRelease.InstanceCount/2 + 1); err != nil {
-			return err
-		}
-
-		instancesRemoving := currentRelease.InstanceCount - targetRelease.InstanceCount
-
+		// Set awareness attributes to move shards off of Instances that will be removed
 		var awarenessAttrs []string
 		for i := instancesRemoving; i > 0; i-- {
-			id := *currentInstances[len(currentInstances)-i].ID
-			attr := "n" + id
+			ordinal := component.Instances[len(component.Instances)-i].Num
+			attr := fmt.Sprintf("n%d", ordinal)
 			awarenessAttrs = append(awarenessAttrs, attr)
 		}
-		if err := es.setAwarenessAttrs(awarenessAttrs); err != nil {
+		if err := elasticsearch.setAwarenessAttrs(awarenessAttrs); err != nil {
 			return err
 		}
-		if err := es.waitForShardRecovery(); err != nil {
+		// Be sure to clear the awareness attributes
+		defer elasticsearch.clearAwarenessAttrs()
+
+		// Wait for shards to move off of the marked Instances
+		if err := elasticsearch.waitForShardRecovery(); err != nil {
 			return err
-		}
-
-		for _, instance := range currentInstances[len(currentInstances)-instancesRemoving:] {
-			if err := instance.Stop(); err != nil {
-				return err
-			}
-			if err := es.waitForShardRecovery(); err != nil {
-				return err
-			}
-		}
-
-		if err := es.clearAwarenessAttrs(); err != nil {
-			return err
-		}
-
-		// add new instances
-	} else if currentRelease.InstanceCount < targetRelease.InstanceCount {
-		instancesAdding := targetRelease.InstanceCount - currentRelease.InstanceCount
-		newInstances := targetInstances[len(targetInstances)-instancesAdding:]
-		for _, instance := range newInstances {
-			if err := instance.Start(); err != nil {
-				return err
-			}
-		}
-		for _, instance := range newInstances {
-			if err := instance.WaitForStarted(); err != nil {
-				return err
-			}
 		}
 	}
 
-	if err := es.disableShardRebalancing(); err != nil {
+	// Prevent shards from moving around during restarts
+	if err := elasticsearch.disableShardRebalancing(); err != nil {
 		return err
 	}
+	defer elasticsearch.enableShardRebalancing()
 
-	// update instances
+	for _, instance := range component.Instances {
+		// Remove Instances
+		if (instance.Num + 1) > component.TargetRelease.InstanceCount {
+			if err := sg.Instances.Delete(instance.ID, instance); err != nil {
+				return err
+			}
+			if err := sg.Instances.WaitForDeleted(instance); err != nil {
+				return err
+			}
 
-	if *currentRelease.InstanceGroup == *targetRelease.InstanceGroup {
-		return nil // no need to update restart instances
-	}
+			// Wait for shards to recover after removing Instances
+			if err := elasticsearch.waitForShardRecovery(); err != nil {
+				return err
+			}
+			continue
+		}
 
-	var instancesRestarting int
-	if currentRelease.InstanceCount < targetRelease.InstanceCount {
-		instancesRestarting = currentRelease.InstanceCount
-	} else {
-		instancesRestarting = targetRelease.InstanceCount
-	}
+		// Stop Instance if not using new Release
+		if *instance.ReleaseID != *component.TargetReleaseID {
 
-	for i := 0; i < instancesRestarting; i++ {
-		currentInstance := currentInstances[i]
-		targetInstance := targetInstances[i]
+			// Prevent shard moving and flush to disk before restart
+			if err := elasticsearch.disableShardAllocation(); err != nil {
+				return err
+			}
+			if err := elasticsearch.flushTranslog(); err != nil {
+				return err
+			}
 
-		currentInstance.Stop()
-		currentInstance.WaitForStopped()
+			if err := sg.Instances.Stop(instance); err != nil {
+				return err
+			}
+			if err := sg.Instances.WaitForStopped(instance); err != nil {
+				return err
+			}
+		}
 
-		targetInstance.Start()
-		targetInstance.WaitForStarted()
-	}
-
-	for i := 0; i < instancesRestarting; i++ {
-		currentInstance := currentInstances[i]
-		targetInstance := targetInstances[i]
-
-		if err := es.disableShardAllocation(); err != nil {
+		// Start Instance
+		if instance.Started {
+			continue
+		}
+		if err := sg.Instances.Start(instance); err != nil {
+			return err
+		}
+		if err := sg.Instances.WaitForStarted(instance); err != nil {
 			return err
 		}
 
-		if err := es.flushTranslog(); err != nil {
-			return err
-		}
-
-		currentInstance.Stop()
-		currentInstance.WaitForStopped()
-
-		targetInstance.Start()
-		targetInstance.WaitForStarted()
-
-		// assertNodeConnected()
 		time.Sleep(30 * time.Second)
 
-		if err := es.enableShardAllocation(); err != nil {
+		// After each restart, re-enable shard moving and wait for it to settle
+		if err := elasticsearch.enableShardAllocation(); err != nil {
 			return err
 		}
-
-		if err := es.waitForShardRecovery(); err != nil {
+		if err := elasticsearch.waitForShardRecovery(); err != nil {
 			return err
 		}
-	}
-
-	if err := es.enableShardRebalancing(); err != nil {
-		return err
 	}
 
 	return nil
